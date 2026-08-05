@@ -1,0 +1,46 @@
+name: 更新台股資料
+
+on:
+  schedule:
+    - cron: '0 10 * * 1-5'   # 每週一至五 10:00 UTC = 台北 18:00
+  workflow_dispatch: {}        # 允許手動觸發
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Taipei          # 讓腳本的日期/時間以台北時區計算
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 還原快取（過去交易日不變，加速）
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: twse-cache-${{ github.run_id }}
+          restore-keys: |
+            twse-cache-
+
+      - name: 抓取證交所/櫃買資料並更新 index.html
+        shell: pwsh
+        run: ./update-twse.ps1
+
+      - name: 提交並推送（有變更才提交，觸發 Pages 重建）
+        shell: bash
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if git diff --cached --quiet; then
+            echo "資料無變更"
+          else
+            git commit -m "Auto update data ($(date +'%Y-%m-%d %H:%M'))"
+            git push
+          fi

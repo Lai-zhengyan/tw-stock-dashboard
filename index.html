@@ -161,8 +161,12 @@
     border-inline-start:4px solid var(--edge); }
   .pv-badge{ font-family:var(--serif); font-size:26px; font-weight:700; letter-spacing:.06em; color:var(--edge); }
   .pv-sub{ flex:1; min-width:200px; font-size:13px; color:var(--ink-2); line-height:1.55; }
-  .pv-stages{ display:flex; gap:6px; flex-wrap:wrap; }
+  .pv-stages{ display:flex; gap:8px; flex-wrap:wrap; }
   .pv-stages .hstage{ flex:0 0 auto; min-width:76px; }
+  .pv-stages .pstat{ display:flex; flex-direction:column; gap:2px; padding:6px 13px;
+    border:1px solid var(--rule-soft); border-radius:4px; background:var(--surface); }
+  .pv-stages .pstat .pl{ font-size:10.5px; color:var(--muted); letter-spacing:.02em; }
+  .pv-stages .pstat b{ font-family:var(--serif); font-size:15px; font-weight:600; }
   .pulse-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; }
   .pmcard{ padding:13px 15px; display:flex; flex-direction:column; gap:8px; }
   .pmcard .pm-k{ font-size:12px; color:var(--muted); letter-spacing:.03em; }
@@ -1580,27 +1584,42 @@ window.TWSE_DATA = {"generatedAt":"2026-08-17 01:43","tradeDate":"2026-08-14","u
     var d=pulseWindow(), cur=d[d.length-1], first=d[0];
     var below20=cur.idxMa20!=null && cur.idx<cur.idxMa20;
     var below60=cur.idxMa60!=null && cur.idx<cur.idxMa60;
-    var ft5=d.slice(-5).reduce(function(a,x){return a+x.ftLots;},0);   // 近5日科技股外資投信淨額(張)
-    var w1=ft5<0, w2=(cur.pA20<50 || cur.pRs<40), w3=below20, w4=below60;   // 動能：短線廣度或相對強度廣度轉弱
-    var V;
-    if(!w3&&!w4){ V = w2 ? {t:'減碼警戒',c:'var(--warn)',d:'指數仍在均線上，但市場廣度不足（站上 20 日線不到半數，或相對強度為正的個股偏少）——由少數權值撐盤，提高警覺。'}
-      : (w1 ? {t:'留意',c:'var(--warn)',d:'指數與廣度尚可，但科技股外資＋投信近 5 日轉為淨流出，資金常領先價格，先留意。'}
-            : {t:'健康',c:'var(--up)',d:'指數站上 20／60 日線、市場廣度充足、法人資金流入，多頭結構完整。'}); }
-    else if(w3&&!w4) V={t:'轉弱',c:'var(--warn)',d:'加權指數跌破 20 日月線，波段轉弱；觀察是否守住 60 日季線，宜降低持股。'};
-    else if(w3&&w4) V={t:'轉空警戒',c:'var(--down)',d:'加權指數同時跌破 20 與 60 日線，中長期趨勢轉空，保守應對。'};
-    else V={t:'整理',c:'var(--warn)',d:'指數在 20 日線上、60 日線下，方向未明，區間整理。'};
+    // 趨勢結構（落後·背景）：指數 vs 20／60 日線
+    var struct=(!below20&&!below60)?{t:'多頭',c:'var(--up)'}:(below20&&below60)?{t:'空頭',c:'var(--down)'}:{t:'均線間整理',c:'var(--warn)'};
+    // 內部力道方向（領先·主角）：廣度、相對強度廣度、法人資金 的近期「變化方向」
+    function avg(a){ return a.length? a.reduce(function(x,y){return x+y;},0)/a.length : 0; }
+    var seg=Math.max(1,Math.floor(d.length/3));
+    var brSlope=avg(d.slice(-seg).map(function(x){return x.pA20;}))-avg(d.slice(0,seg).map(function(x){return x.pA20;}));
+    var rsSlope=avg(d.slice(-seg).map(function(x){return x.pRs;})) -avg(d.slice(0,seg).map(function(x){return x.pRs;}));
+    var chip5=d.slice(-5).reduce(function(a,x){return a+x.ftLots;},0);
+    var mom=(brSlope>1?1:brSlope<-1?-1:0)+(rsSlope>1?1:rsSlope<-1?-1:0)+(chip5>0?1:chip5<0?-1:0);   // -3..+3
+    var force=mom>=2?{t:'轉強',c:'var(--up)',a:'▲'}:mom<=-2?{t:'轉弱',c:'var(--down)',a:'▼'}:{t:'中性',c:'var(--muted)',a:'→'};
 
-    var labels=['①籌碼','②動能','③波段','④趨勢'], ws=[w1,w2,w3,w4];
-    var lights=ws.map(function(on,i){ return '<span class="hstage '+(on?'warn':'ok')+'"><span class="dot"></span>'+labels[i]+'</span>'; }).join('');
+    var V;
+    if(below20&&below60){                       // 空頭結構：看內部有沒有先轉強（落底）
+      V=(mom>=2)?{t:'落底轉強跡象',c:'var(--up)',d:'指數仍在 20／60 日線下（空頭結構），但內部力道回升——廣度／相對強度／法人資金同步轉強，可能醞釀反轉，留意落底進場訊號。'}
+                :{t:'弱勢整理',c:'var(--down)',d:'指數在均線下、內部力道尚未轉強，趨勢偏空，保守應對、等待內部轉強再說。'};
+    } else if(!below20&&!below60){               // 多頭結構：看內部有沒有先轉弱（作頭）
+      V=(mom<=-2)?{t:'高檔轉弱警示',c:'var(--warn)',d:'指數在均線上，但內部力道轉弱——廣度收斂、資金退潮，多由權值撐盤，逢高減碼、提高警覺。'}
+                 :{t:'多頭',c:'var(--up)',d:'指數站上 20／60 日線、內部力道向上，多頭結構完整，可續抱。'};
+    } else {                                     // 均線間整理
+      V=(mom>=2)?{t:'整理偏多',c:'var(--warn)',d:'指數在 20／60 日線間整理，但內部力道回升，偏多看待、留意突破。'}
+        :(mom<=-2)?{t:'整理偏弱',c:'var(--warn)',d:'指數在均線間整理、內部力道轉弱，偏弱看待、控制持股。'}
+        :{t:'整理',c:'var(--warn)',d:'指數在 20／60 日線之間、內部力道中性，方向未明。'};
+    }
+
     document.getElementById('pulseVerdict').innerHTML =
       '<article class="card pv" style="--edge:'+V.c+'"><span class="pv-badge">'+V.t+'</span>'+
-      '<span class="pv-sub">'+V.d+'</span><div class="pv-stages">'+lights+'</div></article>';
+      '<span class="pv-sub">'+V.d+'</span><div class="pv-stages">'+
+        '<span class="pstat"><span class="pl">趨勢結構（落後）</span><b style="color:'+struct.c+'">'+struct.t+'</b></span>'+
+        '<span class="pstat"><span class="pl">內部力道（領先）</span><b style="color:'+force.c+'">'+force.a+' '+force.t+'</b></span>'+
+      '</div></article>';
 
     // 背離提示
     var idxChg=cur.idx-first.idx, brChg=cur.pA20-first.pA20, note='';
     if(idxChg>0 && brChg<-4) note='<b>頂部背離警示：</b>近 '+d.length+' 日指數上漲，但站上 20 日線個股比率反而下降 '+Math.abs(brChg).toFixed(0)+' 個百分點——上漲家數收斂，須留意權值撐盤的假象。';
     else if(idxChg<0 && brChg>4) note='<b>底部背離：</b>近 '+d.length+' 日指數下跌，但站上 20 日線個股比率回升——賣壓收斂，可能醞釀落底。';
-    else note='健康度＝科技股廣度（站上均線比率）＋法人資金流向＋加權指數均線結構的綜合判斷。①②為領先訊號，常在指數轉折前先亮燈。';
+    else note='判斷以<b>內部力道（領先）</b>為主、指數均線（落後）為背景：<b>底部</b>常是指數仍在均線下、但廣度與資金先轉強；<b>頭部</b>常是指數仍在均線上、但內部先轉弱。故看的是內部力道的「方向」，不是指數位置本身。';
     document.getElementById('pulseNote').innerHTML = note;
 
     // 指標卡（含近日趨勢迷你圖）
